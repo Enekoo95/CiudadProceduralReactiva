@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{638E6064-49E7-2AE1-27DB-83AC76B13725}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "CiudadReactiva",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	]
+}
