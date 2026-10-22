@@ -6,7 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
-
+#include "CityPerson.h"
 
 
 // Sets default values
@@ -16,6 +16,7 @@ ACityScene::ACityScene()
 	PrimaryActorTick.bCanEverTick = false;
 	
 	BuildingClass = ACityBuilding::StaticClass();
+	PersonClass = ACityPerson::StaticClass();
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
 
@@ -58,6 +59,11 @@ void ACityScene::ClearScene()
 	{
 		Work->Destroy();
 		Work = nullptr;
+	}
+	if (Person)
+	{
+		Person->Destroy();
+		Person = nullptr;
 	}
 }
 
@@ -102,6 +108,15 @@ void ACityScene::StartScene()
 
 	if (Home) { Home->SetBuildingType(EBuildingType::Home); }
 	if (Work) { Work->SetBuildingType(EBuildingType::Work); }
+	if (Home && Work && PersonClass)
+	{
+		const FVector Start = Home->GetEntranceLocation() + FVector(0.f, 0.f, 100.f);
+		Person = World->SpawnActor<ACityPerson>(PersonClass, Start, FRotator::ZeroRotator, Params);
+		if (Person)
+		{
+			Person->SetRoute(Home, Work);
+		}
+	}
 }
 
 // Called every frame

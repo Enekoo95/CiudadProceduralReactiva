@@ -8,7 +8,7 @@
 
 class ACityBuilding;
 class UStaticMeshComponent;
-
+class ACityPerson;
 
 UCLASS()
 class CIUDADREACTIVA_API ACityScene : public AActor
@@ -55,6 +55,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Scene")
 	TObjectPtr<UStaticMeshComponent> Ground;
 
+	UPROPERTY(EditAnywhere, Category = "Scene")
+	TSubclassOf<ACityPerson> PersonClass;
+
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<ACityBuilding> Home;
@@ -62,6 +65,8 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ACityBuilding> Work;
 
+	UPROPERTY(Transient)
+	TObjectPtr<ACityPerson> Person;
 
 public:	
 	// Called every frame

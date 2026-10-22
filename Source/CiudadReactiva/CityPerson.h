@@ -6,24 +6,53 @@
 #include "GameFramework/Character.h"
 #include "CityPerson.generated.h"
 
+class ACityBuilding;
+class UStaticMeshComponent;
+
 UCLASS()
 class CIUDADREACTIVA_API ACityPerson : public ACharacter
 {
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
+
 	ACityPerson();
 
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+	void SetRoute(ACityBuilding* InHome, ACityBuilding* InWork);
 
-public:	
-	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+protected:
+
+	virtual void BeginPlay() override;
+
+	UPROPERTY(VisibleAnywhere, Category = "Person")
+	TObjectPtr<UStaticMeshComponent> Body;
+
+	UPROPERTY(EditAnywhere, Category = "Person")
+	float WalkSpeed = 1000.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Person")
+	float BuildingRadius = 60.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Person")
+	float WaitTime = 2.0f;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<ACityBuilding> Home;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ACityBuilding> Work;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ACityBuilding> TargetBuilding;
+
+	float WaitRemaining = 0.0f;
+	bool bWaiting = false;
+
+
 
 };
