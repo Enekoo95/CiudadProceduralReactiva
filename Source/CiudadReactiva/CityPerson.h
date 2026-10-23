@@ -8,6 +8,8 @@
 
 class ACityBuilding;
 class UStaticMeshComponent;
+class ACityClock;
+
 
 UCLASS()
 class CIUDADREACTIVA_API ACityPerson : public ACharacter
@@ -18,11 +20,12 @@ public:
 
 	ACityPerson();
 
-	void SetRoute(ACityBuilding* InHome, ACityBuilding* InWork);
+	void SetRoute(ACityBuilding* InHome, ACityBuilding* InWork, ACityClock* InClock);
 
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
 
 protected:
 
@@ -37,8 +40,11 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Person")
 	float BuildingRadius = 60.0f;
 
-	UPROPERTY(EditAnywhere, Category = "Person")
-	float WaitTime = 2.0f;
+	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = "0", ClampMax = "24"))
+	float WorkStartTime = 8.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = "0", ClampMax = "24"))
+	float WorkEndTime = 17.0f;
 
 private:
 	UPROPERTY(Transient)
@@ -48,11 +54,6 @@ private:
 	TObjectPtr<ACityBuilding> Work;
 
 	UPROPERTY(Transient)
-	TObjectPtr<ACityBuilding> TargetBuilding;
-
-	float WaitRemaining = 0.0f;
-	bool bWaiting = false;
-
-
+	TObjectPtr<ACityClock> Clock;
 
 };

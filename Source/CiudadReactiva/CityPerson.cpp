@@ -2,7 +2,8 @@
 
 #include "CityPerson.h"
 #include "CityBuilding.h"
-//#include "AIController.h"
+#include "CityClock.h"
+#include "AIController.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -14,7 +15,7 @@ ACityPerson::ACityPerson()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	//AIControllerClass = AAIController::StaticClass();
+	AIControllerClass = AAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	bUseControllerRotationYaw = false;
@@ -39,46 +40,35 @@ void ACityPerson::BeginPlay()
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
-void ACityPerson::SetRoute(ACityBuilding* InHome, ACityBuilding* InWork)
+void ACityPerson::SetRoute(ACityBuilding* InHome, ACityBuilding* InWork, ACityClock* InClock)
 {
 	Home = InHome;
 	Work = InWork;
-	TargetBuilding = Work;
-	bWaiting = false;
-	WaitRemaining = 0.f;
+	Clock = InClock;
 }
 
 void ACityPerson::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!TargetBuilding)
+	if (!Home || !Work || !Clock)
 	{
 		return;
 	}
 
-	if (bWaiting)
-	{
-		WaitRemaining -= DeltaTime;
-		if (WaitRemaining <= 0.f)
-		{
-			bWaiting = false;
-			TargetBuilding = (TargetBuilding == Work) ? Home : Work;
-		}
-		return;
-	}
-
-	FVector ToTarget = TargetBuilding->GetEntranceLocation() - GetActorLocation();
+	const float Hour = Clock->getHour();
+	const bool workTime = (Hour >= WorkStartTime && Hour < WorkEndTime);
+	const ACityBuilding* Target = workTime ? Work : Home;	
+	
+	FVector ToTarget = Target->GetEntranceLocation() - GetActorLocation();
 	ToTarget.Z = 0.f;
 
-	if (ToTarget.Size2D() <= BuildingRadius)
+	if (ToTarget.SizeSquared() < FMath::Square(BuildingRadius))
 	{
-		bWaiting = true;
-		WaitRemaining = WaitTime;
 		return;
 	}
 
-	AddMovementInput(ToTarget.GetSafeNormal(), 1.f);
+	AddMovementInput(ToTarget.GetSafeNormal());
 }
 
 void ACityPerson::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

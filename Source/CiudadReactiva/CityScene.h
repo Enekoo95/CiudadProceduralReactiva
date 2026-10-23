@@ -9,6 +9,8 @@
 class ACityBuilding;
 class UStaticMeshComponent;
 class ACityPerson;
+class ACityClock;
+
 
 UCLASS()
 class CIUDADREACTIVA_API ACityScene : public AActor
@@ -52,6 +54,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Scene")
 	int32 Seed = 12345;
 
+	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = 0.0f, ClampMax = 24.0f))
+	float DayDuration = 240.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = 0.0f, ClampMax = 24.0f))
+	float StartHour = 6.0f;
+
 	UPROPERTY(VisibleAnywhere, Category = "Scene")
 	TObjectPtr<UStaticMeshComponent> Ground;
 
@@ -67,6 +75,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ACityPerson> Person;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ACityClock> Clock;
 
 public:	
 	// Called every frame

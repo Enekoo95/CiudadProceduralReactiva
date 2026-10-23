@@ -3,10 +3,12 @@
 
 #include "CityScene.h"
 #include "CityBuilding.h"
+#include "CityPerson.h"
+#include "CityClock.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
-#include "CityPerson.h"
+
 
 
 // Sets default values
@@ -65,6 +67,11 @@ void ACityScene::ClearScene()
 		Person->Destroy();
 		Person = nullptr;
 	}
+	if (Clock)
+	{
+		Clock->Destroy();
+		Clock = nullptr;
+	}
 }
 
 void ACityScene::StartScene()
@@ -108,13 +115,20 @@ void ACityScene::StartScene()
 
 	if (Home) { Home->SetBuildingType(EBuildingType::Home); }
 	if (Work) { Work->SetBuildingType(EBuildingType::Work); }
-	if (Home && Work && PersonClass)
+	Clock = World->SpawnActor<ACityClock>(ACityClock::StaticClass(), Origin, FRotator::ZeroRotator, Params);
+	if (Clock)
+	{
+		Clock->Configure(DayDuration, StartHour);
+	}
+
+	if (Home && Work && Clock && PersonClass)
 	{
 		const FVector Start = Home->GetEntranceLocation() + FVector(0.f, 0.f, 100.f);
 		Person = World->SpawnActor<ACityPerson>(PersonClass, Start, FRotator::ZeroRotator, Params);
-		if (Person)
+
+		if (Person) 
 		{
-			Person->SetRoute(Home, Work);
+			Person->SetRoute(Home, Work, Clock);
 		}
 	}
 }
