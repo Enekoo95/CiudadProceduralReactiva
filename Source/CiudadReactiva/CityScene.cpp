@@ -116,6 +116,7 @@ void ACityScene::StartScene()
 	if (Home) { Home->SetBuildingType(EBuildingType::Home); }
 	if (Work) { Work->SetBuildingType(EBuildingType::Work); }
 	Clock = World->SpawnActor<ACityClock>(ACityClock::StaticClass(), Origin, FRotator::ZeroRotator, Params);
+
 	if (Clock)
 	{
 		Clock->Configure(DayDuration, StartHour);
@@ -128,7 +129,7 @@ void ACityScene::StartScene()
 
 		if (Person) 
 		{
-			Person->SetRoute(Home, Work, Clock);
+			Person-> SetRoute(Home, Work, Clock);
 		}
 	}
 }
