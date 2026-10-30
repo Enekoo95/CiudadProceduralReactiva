@@ -26,6 +26,7 @@ public:
 
 	void SetBuildingType(EBuildingType NewType);
 
+	void SetSize(const FVector& NewSize);
 	EBuildingType GetBuildingType() const { return BuildingType; }
 
 	FVector GetEntranceLocation() const;
@@ -44,6 +45,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Building")
 	EBuildingType BuildingType = EBuildingType::Home;
+
+	UPROPERTY(EditAnywhere, Category = "Building")
+	bool bShowLabel = false;
 
 public:	
 	// Called every frame

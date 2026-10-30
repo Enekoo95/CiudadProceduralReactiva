@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,18 +5,19 @@
 #include "CityScene.generated.h"
 
 class ACityBuilding;
-class UStaticMeshComponent;
 class ACityPerson;
 class ACityClock;
+class USceneComponent;
+class UStaticMeshComponent;
+class UInstancedStaticMeshComponent;
 
 
 UCLASS()
 class CIUDADREACTIVA_API ACityScene : public AActor
 {
 	GENERATED_BODY()
-	
-public:	
-	// Sets default values for this actor's properties
+
+public:
 	ACityScene();
 
 	virtual void OnConstruction(const FTransform& Transform) override;
@@ -29,58 +28,96 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Scene")
 	void ClearScene();
 
-	ACityBuilding* GetHome() const { return Home; }
-	ACityBuilding* GetWork() const { return Work; }
-
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
 	UPROPERTY(EditAnywhere, Category = "Scene")
 	bool bAutoStart = true;
 
 	UPROPERTY(EditAnywhere, Category = "Scene")
-	TSubclassOf<ACityBuilding> BuildingClass;
-
-	UPROPERTY(EditAnywhere, Category = "Scene", meta = (ClampMin = "1000"))
-	float AreaExtent = 3000.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Scene")
-	float MinDistanceBetweenBuildings = 2500.0f;
-
-	UPROPERTY(VisibleAnywhere, Category = "Scene")
 	bool bRandomizeSeed = true;
 
 	UPROPERTY(EditAnywhere, Category = "Scene")
 	int32 Seed = 12345;
 
-	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = 0.0f, ClampMax = 24.0f))
-	float DayDuration = 240.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = 0.0f, ClampMax = 24.0f))
-	float StartHour = 6.0f;
-
-	UPROPERTY(VisibleAnywhere, Category = "Scene")
-	TObjectPtr<UStaticMeshComponent> Ground;
+	UPROPERTY(EditAnywhere, Category = "Scene")
+	TSubclassOf<ACityBuilding> BuildingClass;
 
 	UPROPERTY(EditAnywhere, Category = "Scene")
 	TSubclassOf<ACityPerson> PersonClass;
 
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "8"))
+	int32 BlocksX = 6;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "8"))
+	int32 BlocksY = 6;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1000"))
+	float BlockSize = 1000.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "200"))
+	float StreetWidth = 300.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 LotsPerSide = 2;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0", ClampMax = "1"))
+	float ParkChance = 0.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.2", ClampMax = "0.9"))
+	float MinFootprint = 0.5f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.2", ClampMax = "0.9"))
+	float MaxFootprint = 0.75f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout")
+	float MinBuildingHeight = 600.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout")
+	float MaxBuildingHeight = 2000.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.5"))
+	float MinHeightRatio = 1.5f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.5"))
+	float MaxHeightRatio = 5.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|People", meta = (ClampMin = "0", ClampMax = "1"))
+	float WorkRatio = 0.3f;
+
+	UPROPERTY(EditAnywhere, Category = "City|People", meta = (ClampMin = "0"))
+	int32 MaxCitizens = 8;
+
+	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = "1"))
+	float DayDuration = 240.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = "0", ClampMax = "24"))
+	float StartHour = 6.0f;
+
+	UPROPERTY(VisibleAnywhere, Category = "Scene")
+	TObjectPtr<USceneComponent> Root;
+
+	UPROPERTY(VisibleAnywhere, Category = "Scene")
+	TObjectPtr<UStaticMeshComponent> Ground;
+
+	UPROPERTY(VisibleAnywhere, Category = "Scene")
+	TObjectPtr<UInstancedStaticMeshComponent> BlockSlabs;
+
 private:
-	UPROPERTY(Transient)
-	TObjectPtr<ACityBuilding> Home;
+	FVector2D GetBlockCenter(int32 X, int32 Y) const;
+
+	FVector2D GetTotalSize() const;
+
+	void SpawnBuildingsInBlock(const FVector2D& Center, FRandomStream& Rng, const FActorSpawnParameters& Params);
+
+	void SpawnPark(const FVector2D& Center);
 
 	UPROPERTY(Transient)
-	TObjectPtr<ACityBuilding> Work;
+	TArray<TObjectPtr<ACityBuilding>> SpawnedBuildings;
 
 	UPROPERTY(Transient)
-	TObjectPtr<ACityPerson> Person;
+	TArray<TObjectPtr<ACityPerson>> SpawnedPeople;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ACityClock> Clock;
-
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
 };
