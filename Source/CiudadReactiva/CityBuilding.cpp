@@ -34,14 +34,12 @@ ACityBuilding::ACityBuilding()
 		Mesh->SetMaterial(0, BuildingMaterial.Object);
 	}
 
-
-	Mesh->SetRelativeScale3D(FVector(3.0f, 3.0f, 5.0f));
-	Mesh->SetRelativeLocation(FVector(0.0f, 0.0f, 250.0f));
-
 	Entrance = CreateDefaultSubobject<USceneComponent>(TEXT("Entrance"));
 	Entrance->SetupAttachment(Root);
-	Entrance->SetRelativeLocation(FVector(250.0f, 0.0f, 0.0f));
+
+	SetSize(FVector(300.0f, 300.0f, 500.0f));
 }
+
 
 
 void ACityBuilding::SetBuildingType(EBuildingType NewType)
@@ -53,14 +51,23 @@ void ACityBuilding::SetBuildingType(EBuildingType NewType)
 	{
 		MID->SetVectorParameterValue(TEXT("Color"), bIsHome ? FLinearColor::Blue : FLinearColor::Green);
 	}
-
-	DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 600.f),
-	bIsHome ? TEXT("CASA") : TEXT("TRABAJO"), nullptr, FColor::White, 100000.f, false, 2.f);
+	if (bShowLabel)
+	{
+		DrawDebugString(GetWorld(), GetActorLocation() + FVector(0.f, 0.f, 600.f),
+			bIsHome ? TEXT("CASA") : TEXT("TRABAJO"), nullptr, FColor::White, 100000.f, false, 2.f);
+	}
 }
 
 FVector ACityBuilding::GetEntranceLocation() const
 {
 	return Entrance->GetComponentLocation();
+}
+
+void ACityBuilding::SetSize(const FVector& NewSize)
+{
+	Mesh->SetRelativeScale3D(NewSize / 100.0f);
+	Mesh->SetRelativeLocation(FVector(0.0f, 0.0f, NewSize.Z * 0.5f));
+	Entrance->SetRelativeLocation(FVector(NewSize.X * 0.5f + 100.f, 0.f, 0.f));
 }
 
 void ACityBuilding::BeginPlay()

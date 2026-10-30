@@ -47,22 +47,40 @@ protected:
 	TSubclassOf<ACityPerson> PersonClass;
 
 	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "8"))
-	int32 BlocksX = 3;
+	int32 BlocksX = 6;
 
 	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "8"))
-	int32 BlocksY = 3;
+	int32 BlocksY = 6;
 
 	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1000"))
-	float BlockSize = 2400.0f;
+	float BlockSize = 1000.0f;
 
-	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "400"))
-	float StreetWidth = 800.0f;
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "200"))
+	float StreetWidth = 300.0f;
 
 	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 LotsPerSide = 2;
 
 	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0", ClampMax = "1"))
 	float ParkChance = 0.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.2", ClampMax = "0.9"))
+	float MinFootprint = 0.5f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.2", ClampMax = "0.9"))
+	float MaxFootprint = 0.75f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout")
+	float MinBuildingHeight = 600.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout")
+	float MaxBuildingHeight = 2000.0f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.5"))
+	float MinHeightRatio = 1.5f;
+
+	UPROPERTY(EditAnywhere, Category = "City|Layout", meta = (ClampMin = "0.5"))
+	float MaxHeightRatio = 5.0f;
 
 	UPROPERTY(EditAnywhere, Category = "City|People", meta = (ClampMin = "0", ClampMax = "1"))
 	float WorkRatio = 0.3f;
@@ -90,7 +108,7 @@ private:
 
 	FVector2D GetTotalSize() const;
 
-	void SpawnBuildingsInBlock(const FVector2D& Center, const FActorSpawnParameters& Params);
+	void SpawnBuildingsInBlock(const FVector2D& Center, FRandomStream& Rng, const FActorSpawnParameters& Params);
 
 	void SpawnPark(const FVector2D& Center);
 

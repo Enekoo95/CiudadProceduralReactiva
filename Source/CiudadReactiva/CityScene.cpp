@@ -67,9 +67,14 @@ void ACityScene::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
+	SetActorScale3D(FVector::OneVector);
+
 	const FVector2D Total = GetTotalSize();
-	Ground->SetRelativeScale3D(FVector(Total.X / 100.f, Total.Y / 100.f, 0.1f));
-	Ground->SetRelativeLocation(FVector(0.f, 0.f, -5.f));
+	Ground->SetRelativeScale3D(FVector(Total.X / 100.f, Total.Y / 100.f, 1.0f));
+	Ground->SetRelativeLocation(FVector(0.f, 0.f, -50.f));   
+
+	BlockSlabs->SetRelativeScale3D(FVector::OneVector);
+	BlockSlabs->ClearInstances();
 
 	BlockSlabs->ClearInstances();
 	for (int32 X = 0; X < BlocksX; ++X)
@@ -156,7 +161,7 @@ void ACityScene::StartScene()
 			}
 			else
 			{
-				SpawnBuildingsInBlock(Center, Params);
+				SpawnBuildingsInBlock(Center, Rng, Params);
 			}
 		}
 	}
@@ -222,10 +227,10 @@ void ACityScene::StartScene()
 		NumBuildings, Homes.Num(), Works.Num(), SpawnedPeople.Num(), Seed);
 }
 
-void ACityScene::SpawnBuildingsInBlock(const FVector2D& Center, const FActorSpawnParameters& Params)
+void ACityScene::SpawnBuildingsInBlock(const FVector2D& Center, FRandomStream& Rng, const FActorSpawnParameters& Params)
 {
 	UWorld* World = GetWorld();
-	const FVector Origin = GetActorLocation();
+	const FTransform SceneTransform(GetActorRotation(), GetActorLocation(), FVector::OneVector);	
 	const float Lot = BlockSize / LotsPerSide;
 
 	for (int32 I = 0; I < LotsPerSide; ++I)
@@ -245,16 +250,26 @@ void ACityScene::SpawnBuildingsInBlock(const FVector2D& Center, const FActorSpaw
 				Yaw = (OffsetY >= 0.f) ? 90.f : -90.f;
 			}
 
-			const FVector Pos = Origin + FVector(Center.X + OffsetX, Center.Y + OffsetY, SlabHeight);
+			const FTransform LocalTransform(
+				FRotator(0.f, Yaw, 0.f),
+				FVector(Center.X + OffsetX, Center.Y + OffsetY, SlabHeight),
+				FVector::OneVector);
+			const FTransform WorldTransform = LocalTransform * SceneTransform;
 
-			ACityBuilding* Building = World->SpawnActor<ACityBuilding>(BuildingClass, Pos, FRotator(0.f, Yaw, 0.f), Params);
+			ACityBuilding* Building = World->SpawnActor<ACityBuilding>(BuildingClass, WorldTransform, Params);
 			if (Building)
 			{
+				const float Depth = Lot * Rng.FRandRange(MinFootprint, MaxFootprint);
+				const float Width = Lot * Rng.FRandRange(MinFootprint, MaxFootprint);
+				const float Height = Lot * Rng.FRandRange(MinHeightRatio, MaxHeightRatio);
+				Building->SetSize(FVector(Depth, Width, Height));
+
 				SpawnedBuildings.Add(Building);
 			}
 		}
 	}
 }
+
 
 void ACityScene::SpawnPark(const FVector2D& Center)
 {

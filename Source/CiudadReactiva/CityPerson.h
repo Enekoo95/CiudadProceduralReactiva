@@ -11,6 +11,7 @@ class UStaticMeshComponent;
 class ACityClock;
 
 
+
 UCLASS()
 class CIUDADREACTIVA_API ACityPerson : public ACharacter
 {
