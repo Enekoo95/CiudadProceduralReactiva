@@ -27,7 +27,6 @@ public:
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-
 protected:
 
 	virtual void BeginPlay() override;
@@ -39,7 +38,13 @@ protected:
 	float WalkSpeed = 1000.0f;
 
 	UPROPERTY(EditAnywhere, Category = "Person")
-	float BuildingRadius = 60.0f;
+	float BuildingRadius = 50.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Person")
+	float AcceptanceRadius = 80.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Person", meta = (ClampMin = "0.1"))
+	float RetryInterval = 0.5f;
 
 	UPROPERTY(EditAnywhere, Category = "Clock", meta = (ClampMin = "0", ClampMax = "24"))
 	float WorkStartTime = 8.0f;
@@ -57,4 +62,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<ACityClock> Clock;
 
+	UPROPERTY(Transient)
+	TObjectPtr<ACityBuilding> CurrentTarget;
+
+	bool bArrived = false;
+	float RetryTimer = 0.0f;
 };
