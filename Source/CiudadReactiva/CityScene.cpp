@@ -7,6 +7,7 @@
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
@@ -16,6 +17,26 @@ namespace
 {
 	constexpr float SlabHeight = 10.f;
 	constexpr int32 MaxLotsPerAxis = 6;
+
+	// Celda fija para muestrear el ruido de altura: asi el tamaño de parcela no cambia el patron de alturas.
+	constexpr float HeightNoiseCell = 500.f;
+
+	// Crea el MID una sola vez y lo reutiliza; si el slot de material cambio, lo recrea.
+	void ApplyColor(TObjectPtr<UMaterialInstanceDynamic>& MID, UPrimitiveComponent* Comp, const FLinearColor& Color)
+	{
+		if (!Comp)
+		{
+			return;
+		}
+		if (!MID || Comp->GetMaterial(0) != MID.Get())
+		{
+			MID = Comp->CreateAndSetMaterialInstanceDynamic(0);
+		}
+		if (MID)
+		{
+			MID->SetVectorParameterValue(TEXT("Color"), Color);
+		}
+	}
 }
 
 ACityScene::ACityScene()
@@ -54,21 +75,29 @@ ACityScene::ACityScene()
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Ruido / aleatoriedad
+// ---------------------------------------------------------------------------
+
 float ACityScene::Perlin01(float X, float Y, float Scale) const
 {
-	const float Offset = (Seed % 1000) * 17.31;
+	const float Offset = (Seed % 1000) * 17.31f;
 	const FVector2D P((X + 0.37f) * Scale + Offset, (Y + 0.37f) * Scale + Offset * 0.73f);
 	return FMath::Clamp((FMath::PerlinNoise2D(P) + 1.f) * 0.5f, 0.f, 1.f);
+}
+
+float ACityScene::NoiseNorm(float X, float Y, float Scale) const
+{
+	return FMath::Clamp((Perlin01(X, Y, Scale) - 0.25f) / 0.5f, 0.f, 1.f);
 }
 
 float ACityScene::GetBlockExtent(int32 Index, int32 Axis) const
 {
 	float N;
 
-	if (bUsePerlinNoise) 
+	if (bUsePerlinNoise)
 	{
-		const float Raw = Perlin01(Index, Axis * 37.f, BlockSizeNoiseScale);
-		N = FMath::Clamp((Raw - 0.25f) / 0.5f, 0.f, 1.f);
+		N = NoiseNorm(Index, Axis * 37.f, BlockSizeNoiseScale);
 	}
 	else
 	{
@@ -78,20 +107,53 @@ float ACityScene::GetBlockExtent(int32 Index, int32 Axis) const
 	return FMath::Lerp(MinBlockSize, MaxBlockSize, N);
 }
 
-//Parques
+// Parques
 bool ACityScene::IsParkBlock(int32 X, int32 Y) const
 {
 	if (bUsePerlinNoise)
 	{
-		return Perlin01(X, Y, ParkNoiseScale) < ParkThreshold;
+		if (ParkThreshold >= 1.f)
+		{
+			return true;
+		}
+		return NoiseNorm(X, Y, ParkNoiseScale) < ParkThreshold;
 	}
 	const int32 Hash = static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(X * 1000 + Y)));
 	return FRandomStream(Hash).FRand() < ParkChance;
 }
 
-//Layout
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
+
+void ACityScene::SanitizeParams()
+{
+	BlocksX = FMath::Clamp(BlocksX, 1, 8);
+	BlocksY = FMath::Clamp(BlocksY, 1, 8);
+
+	StreetWidth = FMath::Max(StreetWidth, 200.f);
+	TargetLotSize = FMath::Max(TargetLotSize, 200.f);
+
+	MinBlockSize = FMath::Max(MinBlockSize, 200.f);
+	MaxBlockSize = FMath::Max(MaxBlockSize, MinBlockSize);
+
+	MinFootprint = FMath::Clamp(MinFootprint, 0.2f, 0.9f);
+	MaxFootprint = FMath::Clamp(MaxFootprint, MinFootprint, 0.9f);
+
+	MinBuildingHeight = FMath::Max(MinBuildingHeight, 100.f);
+	MaxBuildingHeight = FMath::Max(MaxBuildingHeight, MinBuildingHeight);
+
+	BlockSizeNoiseScale = FMath::Clamp(BlockSizeNoiseScale, 0.01f, 2.f);
+	ParkNoiseScale = FMath::Clamp(ParkNoiseScale, 0.01f, 1.f);
+	HeightNoiseScale = FMath::Clamp(HeightNoiseScale, 0.01f, 1.f);
+	ParkThreshold = FMath::Clamp(ParkThreshold, 0.f, 1.f);
+	ParkChance = FMath::Clamp(ParkChance, 0.f, 1.f);
+}
+
 void ACityScene::BuildLayoutCache()
 {
+	SanitizeParams();
+
 	ColSize.SetNum(BlocksX);
 	ColStart.SetNum(BlocksX);
 	RowSize.SetNum(BlocksY);
@@ -136,6 +198,7 @@ FVector2D ACityScene::GetBlockSize(int32 X, int32 Y) const
 {
 	return FVector2D(ColSize[X], RowSize[Y]);
 }
+
 FName ACityScene::GetOwnTag() const
 {
 	return FName(*FString::Printf(TEXT("CityOf_%s"), *GetName()));
@@ -170,18 +233,9 @@ void ACityScene::RebuildGround()
 		}
 	}
 
-	if (UMaterialInstanceDynamic* StreetMID = Ground->CreateAndSetMaterialInstanceDynamic(0))
-	{
-		StreetMID->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.02f, 0.02f, 0.02f));
-	}
-	if (UMaterialInstanceDynamic* BlockMID = BlockSlabs->CreateAndSetMaterialInstanceDynamic(0))
-	{
-		BlockMID->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.25f, 0.25f, 0.25f));
-	}
-	if (UMaterialInstanceDynamic* ParkMID = ParkSlabs->CreateAndSetMaterialInstanceDynamic(0))
-	{
-		ParkMID->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.05f, 0.35f, 0.07f));
-	}
+	ApplyColor(GroundMID, Ground.Get(), FLinearColor(0.02f, 0.02f, 0.02f));
+	ApplyColor(BlockMID, BlockSlabs.Get(), FLinearColor(0.25f, 0.25f, 0.25f));
+	ApplyColor(ParkMID, ParkSlabs.Get(), FLinearColor(0.05f, 0.35f, 0.07f));
 }
 
 void ACityScene::OnConstruction(const FTransform& Transform)
@@ -189,6 +243,25 @@ void ACityScene::OnConstruction(const FTransform& Transform)
 	Super::OnConstruction(Transform);
 	RebuildGround();
 }
+
+#if WITH_EDITOR
+void ACityScene::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	// Mientras se arrastra un slider solo se actualiza el suelo (OnConstruction); al soltar se regeneran los edificios.
+	if (!bAutoRegenerateInEditor || PropertyChangedEvent.ChangeType == EPropertyChangeType::Interactive)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (World && World->WorldType == EWorldType::Editor)
+	{
+		RegenerateLayout();
+	}
+}
+#endif
 
 void ACityScene::BeginPlay()
 {
@@ -217,7 +290,7 @@ void ACityScene::ClearScene()
 	Clock = nullptr;
 }
 
-void ACityScene::BuildLayout(FRandomStream& Rng)
+void ACityScene::BuildLayout()
 {
 	UWorld* World = GetWorld();
 	if (!World || !BuildingClass)
@@ -225,10 +298,12 @@ void ACityScene::BuildLayout(FRandomStream& Rng)
 		return;
 	}
 
+	// Necesario aqui: desde el widget los parametros cambian sin pasar por OnConstruction.
 	RebuildGround();
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Params.ObjectFlags |= RF_Transient; // no se guardan con el nivel
 
 	for (int32 X = 0; X < BlocksX; ++X)
 	{
@@ -236,13 +311,13 @@ void ACityScene::BuildLayout(FRandomStream& Rng)
 		{
 			if (!IsParkBlock(X, Y))
 			{
-				SpawnBuildingsInBlock(X, Y, Rng, Params);
+				SpawnBuildingsInBlock(X, Y, Params);
 			}
 		}
 	}
 }
 
-void ACityScene::GenerateLayout()
+void ACityScene::GenerateLayoutInternal(bool bNewSeed)
 {
 	ClearScene();
 
@@ -251,14 +326,45 @@ void ACityScene::GenerateLayout()
 		return;
 	}
 
-	if (bRandomizeSeed)
+	if (bNewSeed && bRandomizeSeed)
 	{
 		Seed = FMath::RandRange(0, MAX_int32 - 1);
 	}
-	FRandomStream Rng(Seed);
-	BuildLayout(Rng);
+	BuildLayout();
 
-	UE_LOG(LogTemp, Log, TEXT("CityScene: layout generado, %d edificios. Seed=%d"), SpawnedBuildings.Num(), Seed);
+	UE_LOG(LogTemp, Log, TEXT("CityScene: layout generado, %d edificios. Seed=%d Bloques=%dx%d Calle=%.0f Lote=%.0f Manzana=%.0f-%.0f"),
+		SpawnedBuildings.Num(), Seed, BlocksX, BlocksY, StreetWidth, TargetLotSize, MinBlockSize, MaxBlockSize);
+}
+
+void ACityScene::GenerateLayout()
+{
+	GenerateLayoutInternal(true);
+}
+
+void ACityScene::RegenerateLayout()
+{
+	GenerateLayoutInternal(false);
+}
+
+void ACityScene::ApplyParamsAndRegenerate(
+	int32 InBlocksX, int32 InBlocksY,
+	float InStreetWidth,
+	float InMinBlockSize, float InMaxBlockSize,
+	float InLotSize,
+	float InBlockNoise, float InParkNoise, float InParkThreshold, float InHeightNoise)
+{
+	BlocksX = InBlocksX;
+	BlocksY = InBlocksY;
+	StreetWidth = InStreetWidth;
+	MinBlockSize = InMinBlockSize;
+	MaxBlockSize = InMaxBlockSize;
+	TargetLotSize = InLotSize;
+	BlockSizeNoiseScale = InBlockNoise;
+	ParkNoiseScale = InParkNoise;
+	ParkThreshold = InParkThreshold;
+	HeightNoiseScale = InHeightNoise;
+
+	RegenerateLayout();
 }
 
 void ACityScene::StartScene()
@@ -279,8 +385,9 @@ void ACityScene::StartScene()
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Params.ObjectFlags |= RF_Transient;
 
-	BuildLayout(Rng);
+	BuildLayout();
 
 	const int32 NumBuildings = SpawnedBuildings.Num();
 	if (NumBuildings < 2)
@@ -341,8 +448,11 @@ void ACityScene::StartScene()
 		NumBuildings, Homes.Num(), Works.Num(), SpawnedPeople.Num(), Seed);
 }
 
-//Edificios
-void ACityScene::SpawnBuildingsInBlock(int32 BlockX, int32 BlockY, FRandomStream& Rng, const FActorSpawnParameters& Params)
+// ---------------------------------------------------------------------------
+// Edificios
+// ---------------------------------------------------------------------------
+
+void ACityScene::SpawnBuildingsInBlock(int32 BlockX, int32 BlockY, const FActorSpawnParameters& Params)
 {
 	UWorld* World = GetWorld();
 	const FTransform SceneTransform(GetActorRotation(), GetActorLocation(), FVector::OneVector);
@@ -354,7 +464,8 @@ void ACityScene::SpawnBuildingsInBlock(int32 BlockX, int32 BlockY, FRandomStream
 	const int32 LotsY = FMath::Clamp(FMath::RoundToInt(Size.Y / TargetLotSize), 1, MaxLotsPerAxis);
 	const float LotW = Size.X / LotsX;
 	const float LotD = Size.Y / LotsY;
-	const float RefLot = (LotW + LotD) * 0.5f;
+
+	const uint32 BlockHash = HashCombine(GetTypeHash(Seed), GetTypeHash(BlockX * 100 + BlockY));
 
 	for (int32 I = 0; I < LotsX; ++I)
 	{
@@ -388,24 +499,27 @@ void ACityScene::SpawnBuildingsInBlock(int32 BlockX, int32 BlockY, FRandomStream
 				continue;
 			}
 
+			// Aleatoriedad propia de cada parcela: cambiar un parametro no re-randomiza el resto de edificios.
+			FRandomStream LotRng(static_cast<int32>(HashCombine(BlockHash, GetTypeHash(I * 10 + J))));
+
 			const float DepthLot = bFaceX ? LotW : LotD;
 			const float WidthLot = bFaceX ? LotD : LotW;
-			const float Depth = DepthLot * Rng.FRandRange(MinFootprint, MaxFootprint);
-			const float Width = WidthLot * Rng.FRandRange(MinFootprint, MaxFootprint);
+			const float Depth = DepthLot * LotRng.FRandRange(MinFootprint, MaxFootprint);
+			const float Width = WidthLot * LotRng.FRandRange(MinFootprint, MaxFootprint);
 
-			float HeightRatio;
+			float HeightAlpha;
 			if (bUsePerlinNoise)
 			{
-				const float N = Perlin01((Center.X + OffsetX) / TargetLotSize,
-					(Center.Y + OffsetY) / TargetLotSize, HeightNoiseScale);
-				HeightRatio = FMath::Lerp(MinHeightRatio, MaxHeightRatio, N);
+				HeightAlpha = NoiseNorm((Center.X + OffsetX) / HeightNoiseCell,
+					(Center.Y + OffsetY) / HeightNoiseCell, HeightNoiseScale);
 			}
 			else
 			{
-				HeightRatio = Rng.FRandRange(MinHeightRatio, MaxHeightRatio);
+				HeightAlpha = LotRng.FRand();
 			}
+			const float Height = FMath::Lerp(MinBuildingHeight, MaxBuildingHeight, HeightAlpha);
 
-			Building->SetSize(FVector(Depth, Width, RefLot * HeightRatio));
+			Building->SetSize(FVector(Depth, Width, Height));
 			Building->Tags.Add(GetOwnTag());
 #if WITH_EDITOR
 			Building->SetFolderPath(TEXT("City"));
