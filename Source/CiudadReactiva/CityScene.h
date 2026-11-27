@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "CityLayout.h"
 #include "CityScene.generated.h"
 
 class ACityBuilding;
@@ -11,9 +12,13 @@ class USceneComponent;
 class UStaticMeshComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class UMaterialInterface;
+class UStaticMesh;
+class UPCGComponent;
+class UPCGGraphInterface;
 
 UCLASS()
-class CIUDADREACTIVA_API ACityScene : public AActor
+class CIUDADREACTIVA_API ACityScene : public AActor, public ICityLayoutSource
 {
 	GENERATED_BODY()
 
@@ -21,6 +26,9 @@ public:
 	ACityScene();
 
 	virtual void OnConstruction(const FTransform& Transform) override;
+
+	/** ICityLayoutSource: el nodo PCG "City Layout" lee los parametros de aqui, asi grafo y edificios siempre coinciden. */
+	virtual FCityLayoutParams GetCityLayoutParams() const override;
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -58,6 +66,72 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Tool")
 	bool bAutoRegenerateInEditor = true;
 
+	/** Grafo PCG que genera calles y aceras (nodos City Layout + Street Surfaces del plugin EnekoMartinTools). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Tool")
+	TObjectPtr<UPCGGraphInterface> CityGraph;
+
+	/** Si esta activo y hay CityGraph, calles y aceras las genera el plugin. Si no, se usan las losas simples de antes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Tool")
+	bool bUsePCGStreets = true;
+
+	// ---- Assets (mallas y materiales) ----
+
+	/** Mallas para edificios bajos. Por defecto, las casas de CARLA. Si estan vacias se usan cubos. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TArray<TObjectPtr<UStaticMesh>> HouseMeshes;
+
+	/** Mallas para edificios altos. Por defecto, los bloques de pisos de CARLA. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TArray<TObjectPtr<UStaticMesh>> ApartmentMeshes;
+
+	/** Por encima de este punto de la altura (0 = minima, 1 = maxima) el edificio es un bloque de pisos y no una casa. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets", meta = (ClampMin = "0", ClampMax = "1"))
+	float ApartmentHeightThreshold = 0.5f;
+
+	/** Giro extra (grados) para que la fachada de la malla mire a la calle. Prueba 90, 180 o 270 si salen de lado. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	float BuildingMeshYawOffset = 0.0f;
+
+	/** Mallas para edificios de TRABAJO (oficinas, hotel, museo...). Las casas y bloques de pisos son siempre de tipo casa. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TArray<TObjectPtr<UStaticMesh>> WorkMeshes;
+
+	/** Material de las calles (por defecto, el asfalto de CARLA). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TObjectPtr<UMaterialInterface> RoadMaterial;
+
+	/** Material de las aceras / manzanas (por defecto, la acera de CARLA). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TObjectPtr<UMaterialInterface> SidewalkMaterial;
+
+	/** Tamaño (cm) de cada baldosa de suelo; la textura se repite una vez por baldosa. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets", meta = (ClampMin = "100"))
+	float GroundTileSize = 400.0f;
+
+	/** Arboles que se plantan dentro de los parques. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TArray<TObjectPtr<UStaticMesh>> TreeMeshes;
+
+	/** Distancia aproximada entre arboles (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets", meta = (ClampMin = "100"))
+	float TreeSpacing = 500.0f;
+
+	/** Escala de los arboles (los de CARLA miden ~10 m; esta ciudad es pequena). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets", meta = (ClampMin = "0.05"))
+	float TreeScale = 0.35f;
+
+	/** Multiplicador de las medidas (calle, bloques, parcela) que llegan desde el widget: los assets de CARLA son grandes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "0.1"))
+	float WidgetUnitScale = 3.0f;
+
+	/** Altura aproximada de los arboles en cm (cada malla se escala a esta altura, con algo de variacion). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets", meta = (ClampMin = "100"))
+	float TreeHeight = 450.0f;
+
+	/** Material de los parques (por defecto, el cesped de CARLA). Si es null se usa un color liso. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Assets")
+	TObjectPtr<UMaterialInterface> ParkMaterial;
+
 	// ---- Escena ----
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scene")
@@ -77,23 +151,27 @@ public:
 
 	// ---- Layout: cuantas manzanas, calles y tamaños ----
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "20"))
+	/** Altura de la acera. Debe coincidir con SidewalkHeight del nodo Street Surfaces en el grafo. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "0"))
+	float SidewalkHeight = 15.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "8"))
 	int32 BlocksX = 6;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "20"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "1", ClampMax = "8"))
 	int32 BlocksY = 6;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "200", ClampMax = ""))
-	float StreetWidth = 300.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "200"))
+	float StreetWidth = 900.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "200"))
-	float MinBlockSize = 600.0f;
+	float MinBlockSize = 1800.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "200"))
-	float MaxBlockSize = 1800.0f;
+	float MaxBlockSize = 5400.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "200"))
-	float TargetLotSize = 500.0f;
+	float TargetLotSize = 1600.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "0", ClampMax = "1"))
 	float ParkChance = 0.0f;
@@ -105,10 +183,10 @@ public:
 	float MaxFootprint = 0.75f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "100"))
-	float MinBuildingHeight = 600.0f;
+	float MinBuildingHeight = 900.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Layout", meta = (ClampMin = "100"))
-	float MaxBuildingHeight = 2000.0f;
+	float MaxBuildingHeight = 3000.0f;
 
 	// ---- Perlin ----
 
@@ -159,35 +237,36 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Scene")
 	TObjectPtr<UInstancedStaticMeshComponent> ParkSlabs;
 
+	UPROPERTY(VisibleAnywhere, Category = "Scene")
+	TObjectPtr<UInstancedStaticMeshComponent> RoadTiles;
+
+	UPROPERTY(VisibleAnywhere, Category = "Scene")
+	TObjectPtr<UPCGComponent> PCG;
+
 protected:
 	virtual void BeginPlay() override;
 
 private:
-	float Perlin01(float X, float Y, float Scale) const;
-
-	float NoiseNorm(float X, float Y, float Scale) const;
-
-	float GetBlockExtent(int32 Index, int32 Axis) const;
-	bool IsParkBlock(int32 X, int32 Y) const;
-
 	void SanitizeParams();
 
-	void BuildLayoutCache();
-	FVector2D GetBlockCenter(int32 X, int32 Y) const;
-	FVector2D GetBlockSize(int32 X, int32 Y) const;
-
 	void RebuildGround();
+	void RebuildStreets();
+	void RebuildTrees();
+	UStaticMesh* PickBuildingMesh(const FCityLot& Lot, int32 LotIndex, bool bWork) const;
+	bool IsWorkLot(int32 LotIndex) const;
+
+	/** Indices de las parcelas que son trabajo (las mas altas). */
+	TSet<int32> WorkLots;
 	void BuildLayout();
 	void GenerateLayoutInternal(bool bNewSeed);
-	void SpawnBuildingsInBlock(int32 BlockX, int32 BlockY, const FActorSpawnParameters& Params);
 
 	FName GetOwnTag() const;
 
-	TArray<float> ColSize;
-	TArray<float> RowSize;
-	TArray<float> ColStart;
-	TArray<float> RowStart;
-	FVector2D TotalSize = FVector2D::ZeroVector;
+	/** Layout compartido con el plugin; lo calcula RebuildGround. */
+	FCityLayout Layout;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> TreeComponents;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> GroundMID;

@@ -1,0 +1,86 @@
+Assets de ciudad (CARLA) para Unreal Engine 5.8
+===============================================
+
+El zip contiene 48 modelos con sus materiales y texturas, sacados de CARLA Simulator:
+18 edificios, 30 árboles y los materiales de asfalto, acera, césped y líneas de carretera.
+
+
+Requisitos
+----------
+  - Unreal Engine 5.8, instalado desde el Epic Games Launcher.
+    Las versiones anteriores no pueden abrir estos assets.
+  - Unos 6 GB libres en disco: el zip, los archivos descomprimidos y la caché de shaders.
+
+
+Instalación en un proyecto nuevo
+--------------------------------
+  1. Crea el proyecto.
+     Abre Unreal Engine 5.8 y elige Juegos > En blanco > Blueprint.
+     Usa una ruta corta y fuera de OneDrive, por ejemplo C:\UnrealProjects\MiCiudad.
+     Pulsa Crear.
+
+  2. Cierra Unreal Editor.
+
+  3. Descomprime el zip dentro de la carpeta del proyecto.
+     Haz clic derecho en el zip y elige "Extraer todo...".
+     Pulsa "Examinar" y elige la carpeta del proyecto, la que contiene MiCiudad.uproject.
+     Revisa la ruta de destino: debe terminar en \MiCiudad.
+     Si Windows ha añadido el nombre del zip al final, bórralo.
+     Pulsa Extraer.
+
+  4. Comprueba que existe la carpeta C:\UnrealProjects\MiCiudad\Content\Carla\Static.
+
+  5. Abre el proyecto con doble clic en MiCiudad.uproject.
+     La primera vez compilará shaders durante varios minutos (contador abajo a la derecha).
+     Mientras tanto los materiales se ven grises. Es normal.
+
+
+Dónde está cada cosa (Content Browser > Content > Carla > Static)
+-----------------------------------------------------------------
+  Edificios
+    Building/Buildings/BuildingComplete                    Bloques de pisos (SM_Apt32_A ... SM_Apt35_A)
+    Building/Houses                                        Casas (SM_House17_A, SM_House18_C ...)
+    Building/SpecialBuildings/Parking/IndividualComponents Parking (SM_Parking, SM_ParkingRamp)
+    Static/Town_C/Building                                 Edificios singulares (teatro, museo, hotel ...)
+
+  Árboles
+    Vegetation/Trees                                       SM_AcerSaccharum01_A, SM_Cypress02_A, SM_Pine03_A ...
+    Vegetation/00_LegacyAssets/Trees                       Robles, arces, pinos, etc. (SM_Oak01_L_A ...)
+
+  Materiales de suelo
+    Road/RoadsTown07/Asphalt1_Road                         Asfalto
+    SideWalk/M_SideWalk_d2                                 Acera
+    Road/RoadsTown10HD/Grass1_Ground                       Césped
+    GenericMaterials/00_LegacyMaterials/Roads/LaneMarking  Líneas blancas y amarillas (M_MarkingLane_W / _Y)
+
+
+Importante
+----------
+  - No muevas ni renombres archivos dentro de Content\Carla desde el explorador de Windows.
+    Los assets se referencian entre sí por ruta. Si quieres reorganizarlos, hazlo desde el
+    Content Browser de Unreal, que actualiza las referencias.
+
+
+Problemas frecuentes
+--------------------
+  - "Ruta demasiado larga" al descomprimir:
+      El proyecto está en una ruta demasiado larga. Usa una más corta, como C:\UnrealProjects\MiCiudad.
+  - No aparece la carpeta Carla, o aparece Content\Content\Carla:
+      Se descomprimió en otra carpeta. Mueve la carpeta Carla a MiCiudad\Content\ con el editor cerrado.
+  - Unreal dice que los assets se guardaron con una versión más nueva:
+      Estás usando una versión anterior a la 5.8.
+
+
+Licencia
+--------
+El contenido procede de CARLA Simulator (https://carla.org) y se distribuye bajo
+Creative Commons Attribution 4.0 International (CC BY 4.0). Consulta Content/Carla/LICENSE.
+Si publicas o redistribuyes algo que use estos assets, menciona a CARLA.
+
+
+Cambios respecto al contenido original de CARLA
+-----------------------------------------------
+Se han vuelto a guardar con UE 5.8 y se han corregido referencias rotas a texturas,
+una dependencia del plugin Modeling Tools, dos funciones de material de impostores que
+no compilaban en UE 5.8, y la dependencia de las Material Parameter Collections de
+clima de CARLA. No hace falta ningún ajuste en la configuración del proyecto.

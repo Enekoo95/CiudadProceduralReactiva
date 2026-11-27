@@ -8,6 +8,7 @@
 
 class UStaticMeshComponent;
 class USceneComponent;
+class UStaticMesh;
 
 UENUM(BlueprintType)
 enum class EBuildingType : uint8
@@ -27,6 +28,14 @@ public:
 	void SetBuildingType(EBuildingType NewType);
 
 	void SetSize(const FVector& NewSize);
+
+	/**
+	 * Usa una malla de los assets en vez del cubo. La malla se escala para caber en TargetSize (huella X/Y y altura),
+	 * se apoya en el suelo y se gira 0 o 90 grados (mas YawOffset) segun lo que mejor encaje en la parcela.
+	 * Si InMesh es null cae al cubo con SetSize.
+	 */
+	void SetBuildingMesh(UStaticMesh* InMesh, const FVector& TargetSize, float YawOffset = 0.f,
+		const FLinearColor& Tint = FLinearColor::White, float MaxUniformScale = 1.f);
 	EBuildingType GetBuildingType() const { return BuildingType; }
 
 	FVector GetEntranceLocation() const;
@@ -48,6 +57,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Building")
 	bool bShowLabel = false;
+
+	/** True cuando el edificio usa una malla de los assets (entonces no se tiñe de azul/verde). */
+	bool bUsesAssetMesh = false;
 
 public:	
 	// Called every frame

@@ -10,16 +10,42 @@
 #include "Engine/World.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "MaterialShared.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Kismet/GameplayStatics.h"
+#include "PCGComponent.h"
+#include "PCGGraph.h"
+#include "Math/RandomStream.h"
 
 namespace
 {
 	constexpr float SlabHeight = 10.f;
-	constexpr int32 MaxLotsPerAxis = 6;
 
-	// Celda fija para muestrear el ruido de altura: asi el tamaño de parcela no cambia el patron de alturas.
-	constexpr float HeightNoiseCell = 500.f;
+	// Reparte un rectangulo en baldosas para que la textura se repita (el cubo solo tiene un UV 0-1 por cara).
+	void AddTiledSlab(UInstancedStaticMeshComponent* Target, const FVector2D& Center, const FVector2D& Size, float Bottom, float Height, float Tile)
+	{
+		const int32 NX = FMath::Max(1, FMath::RoundToInt(Size.X / Tile));
+		const int32 NY = FMath::Max(1, FMath::RoundToInt(Size.Y / Tile));
+		const float TX = Size.X / NX;
+		const float TY = Size.Y / NY;
+		for (int32 IX = 0; IX < NX; ++IX)
+		{
+			for (int32 IY = 0; IY < NY; ++IY)
+			{
+				const FVector Loc(Center.X - Size.X * 0.5f + TX * (IX + 0.5f), Center.Y - Size.Y * 0.5f + TY * (IY + 0.5f), Bottom + Height * 0.5f);
+				Target->AddInstance(FTransform(FRotator::ZeroRotator, Loc, FVector(TX / 100.f, TY / 100.f, Height / 100.f)));
+			}
+		}
+	}
+
+	void EnsureInstancedUsage(UMaterialInterface* M)
+	{
+		if (M)
+		{
+			M->CheckMaterialUsage(MATUSAGE_InstancedStaticMeshes);
+		}
+	}
+
 
 	// Crea el MID una sola vez y lo reutiliza; si el slot de material cambio, lo recrea.
 	void ApplyColor(TObjectPtr<UMaterialInstanceDynamic>& MID, UPrimitiveComponent* Comp, const FLinearColor& Color)
@@ -61,11 +87,52 @@ ACityScene::ACityScene()
 	ParkSlabs = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("ParkSlabs"));
 	ParkSlabs->SetupAttachment(Root);
 
+	RoadTiles = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("RoadTiles"));
+	RoadTiles->SetupAttachment(Root);
+
+	PCG = CreateDefaultSubobject<UPCGComponent>(TEXT("PCG"));
+	PCG->GenerationTrigger = EPCGComponentGenerationTrigger::GenerateOnDemand;
+
+	// Assets de CARLA. FObjectFinderOptional no da error si todavia no existen en el proyecto.
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh1(TEXT("/Game/Carla/Static/Building/Houses/SM_House17_A.SM_House17_A"));
+	if (UStaticMesh* M = Mesh1.Get()) { HouseMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh2(TEXT("/Game/Carla/Static/Building/Houses/SM_House17_B.SM_House17_B"));
+	if (UStaticMesh* M = Mesh2.Get()) { HouseMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh3(TEXT("/Game/Carla/Static/Building/Houses/SM_House18_C.SM_House18_C"));
+	if (UStaticMesh* M = Mesh3.Get()) { HouseMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh4(TEXT("/Game/Carla/Static/Building/Houses/SM_House18_E.SM_House18_E"));
+	if (UStaticMesh* M = Mesh4.Get()) { HouseMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh5(TEXT("/Game/Carla/Static/Building/Buildings/BuildingComplete/SM_Apt32_A.SM_Apt32_A"));
+	if (UStaticMesh* M = Mesh5.Get()) { ApartmentMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh7(TEXT("/Game/Carla/Static/Building/Buildings/BuildingComplete/SM_Apt33_A.SM_Apt33_A"));
+	if (UStaticMesh* M = Mesh7.Get()) { ApartmentMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh8(TEXT("/Game/Carla/Static/Building/Buildings/BuildingComplete/SM_Apt34_A.SM_Apt34_A"));
+	if (UStaticMesh* M = Mesh8.Get()) { ApartmentMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh9(TEXT("/Game/Carla/Static/Building/Buildings/BuildingComplete/SM_Apt35_A.SM_Apt35_A"));
+	if (UStaticMesh* M = Mesh9.Get()) { ApartmentMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh10(TEXT("/Game/Carla/Static/Vegetation/Trees/SM_AcerSaccharum01_A.SM_AcerSaccharum01_A"));
+	if (UStaticMesh* M = Mesh10.Get()) { TreeMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh11(TEXT("/Game/Carla/Static/Vegetation/Trees/SM_Cypress02_A.SM_Cypress02_A"));
+	if (UStaticMesh* M = Mesh11.Get()) { TreeMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> Mesh12(TEXT("/Game/Carla/Static/Vegetation/Trees/SM_Pine03_A.SM_Pine03_A"));
+	if (UStaticMesh* M = Mesh12.Get()) { TreeMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> W2(TEXT("/Game/Carla/Static/Static/Town_C/Building/SM_SIAC_Building.SM_SIAC_Building"));
+	if (UStaticMesh* M = W2.Get()) { WorkMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UStaticMesh> W3(TEXT("/Game/Carla/Static/Static/Town_C/Building/SM_SorlHotel.SM_SorlHotel"));
+	if (UStaticMesh* M = W3.Get()) { WorkMeshes.Add(M); }
+	static ConstructorHelpers::FObjectFinderOptional<UMaterialInterface> RoadMat(TEXT("/Game/Carla/Static/Road/RoadsTown07/Asphalt1_Road.Asphalt1_Road"));
+	RoadMaterial = RoadMat.Get();
+	static ConstructorHelpers::FObjectFinderOptional<UMaterialInterface> SidewalkMat(TEXT("/Game/Carla/Static/SideWalk/M_SideWalk_d2.M_SideWalk_d2"));
+	SidewalkMaterial = SidewalkMat.Get();
+	static ConstructorHelpers::FObjectFinderOptional<UMaterialInterface> GrassMaterial(TEXT("/Game/Carla/Static/Road/RoadsTown10HD/Grass1_Ground.Grass1_Ground"));
+	ParkMaterial = GrassMaterial.Get();
+
 	if (CubeMesh.Succeeded())
 	{
 		Ground->SetStaticMesh(CubeMesh.Object);
 		BlockSlabs->SetStaticMesh(CubeMesh.Object);
 		ParkSlabs->SetStaticMesh(CubeMesh.Object);
+		RoadTiles->SetStaticMesh(CubeMesh.Object);
 	}
 	if (BaseMaterial.Succeeded())
 	{
@@ -76,55 +143,32 @@ ACityScene::ACityScene()
 }
 
 // ---------------------------------------------------------------------------
-// Ruido / aleatoriedad
+// Layout (la logica vive en el plugin EnekoMartinTools: FCityLayoutBuilder)
 // ---------------------------------------------------------------------------
 
-float ACityScene::Perlin01(float X, float Y, float Scale) const
+FCityLayoutParams ACityScene::GetCityLayoutParams() const
 {
-	const float Offset = (Seed % 1000) * 17.31f;
-	const FVector2D P((X + 0.37f) * Scale + Offset, (Y + 0.37f) * Scale + Offset * 0.73f);
-	return FMath::Clamp((FMath::PerlinNoise2D(P) + 1.f) * 0.5f, 0.f, 1.f);
+	FCityLayoutParams P;
+	P.BlocksX = BlocksX;
+	P.BlocksY = BlocksY;
+	P.StreetWidth = StreetWidth;
+	P.MinBlockSize = MinBlockSize;
+	P.MaxBlockSize = MaxBlockSize;
+	P.TargetLotSize = TargetLotSize;
+	P.MinFootprint = MinFootprint;
+	P.MaxFootprint = MaxFootprint;
+	P.MinBuildingHeight = MinBuildingHeight;
+	P.MaxBuildingHeight = MaxBuildingHeight;
+	P.SurfaceHeight = (bUsePCGStreets && CityGraph) ? SidewalkHeight : SlabHeight;
+	P.bUsePerlinNoise = bUsePerlinNoise;
+	P.BlockSizeNoiseScale = BlockSizeNoiseScale;
+	P.ParkNoiseScale = ParkNoiseScale;
+	P.ParkThreshold = ParkThreshold;
+	P.HeightNoiseScale = HeightNoiseScale;
+	P.ParkChance = ParkChance;
+	P.Seed = Seed;
+	return P;
 }
-
-float ACityScene::NoiseNorm(float X, float Y, float Scale) const
-{
-	return FMath::Clamp((Perlin01(X, Y, Scale) - 0.25f) / 0.5f, 0.f, 1.f);
-}
-
-float ACityScene::GetBlockExtent(int32 Index, int32 Axis) const
-{
-	float N;
-
-	if (bUsePerlinNoise)
-	{
-		N = NoiseNorm(Index, Axis * 37.f, BlockSizeNoiseScale);
-	}
-	else
-	{
-		const int32 Hash = static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(Index * 2 + Axis)));
-		N = FRandomStream(Hash).FRand();
-	}
-	return FMath::Lerp(MinBlockSize, MaxBlockSize, N);
-}
-
-// Parques
-bool ACityScene::IsParkBlock(int32 X, int32 Y) const
-{
-	if (bUsePerlinNoise)
-	{
-		if (ParkThreshold >= 1.f)
-		{
-			return true;
-		}
-		return NoiseNorm(X, Y, ParkNoiseScale) < ParkThreshold;
-	}
-	const int32 Hash = static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(X * 1000 + Y)));
-	return FRandomStream(Hash).FRand() < ParkChance;
-}
-
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
 
 void ACityScene::SanitizeParams()
 {
@@ -150,55 +194,6 @@ void ACityScene::SanitizeParams()
 	ParkChance = FMath::Clamp(ParkChance, 0.f, 1.f);
 }
 
-void ACityScene::BuildLayoutCache()
-{
-	SanitizeParams();
-
-	ColSize.SetNum(BlocksX);
-	ColStart.SetNum(BlocksX);
-	RowSize.SetNum(BlocksY);
-	RowStart.SetNum(BlocksY);
-
-	float SumX = 0.f;
-	for (int32 X = 0; X < BlocksX; ++X)
-	{
-		ColSize[X] = GetBlockExtent(X, 0);
-		SumX += ColSize[X];
-	}
-	float SumY = 0.f;
-	for (int32 Y = 0; Y < BlocksY; ++Y)
-	{
-		RowSize[Y] = GetBlockExtent(Y, 1);
-		SumY += RowSize[Y];
-	}
-
-	TotalSize.X = SumX + StreetWidth * (BlocksX + 1);
-	TotalSize.Y = SumY + StreetWidth * (BlocksY + 1);
-
-	float Pos = -TotalSize.X * 0.5f + StreetWidth;
-	for (int32 X = 0; X < BlocksX; ++X)
-	{
-		ColStart[X] = Pos;
-		Pos += ColSize[X] + StreetWidth;
-	}
-	Pos = -TotalSize.Y * 0.5f + StreetWidth;
-	for (int32 Y = 0; Y < BlocksY; ++Y)
-	{
-		RowStart[Y] = Pos;
-		Pos += RowSize[Y] + StreetWidth;
-	}
-}
-
-FVector2D ACityScene::GetBlockCenter(int32 X, int32 Y) const
-{
-	return FVector2D(ColStart[X] + ColSize[X] * 0.5f, RowStart[Y] + RowSize[Y] * 0.5f);
-}
-
-FVector2D ACityScene::GetBlockSize(int32 X, int32 Y) const
-{
-	return FVector2D(ColSize[X], RowSize[Y]);
-}
-
 FName ACityScene::GetOwnTag() const
 {
 	return FName(*FString::Printf(TEXT("CityOf_%s"), *GetName()));
@@ -206,36 +201,179 @@ FName ACityScene::GetOwnTag() const
 
 void ACityScene::RebuildGround()
 {
-	BuildLayoutCache();
+	SanitizeParams();
+	Layout = FCityLayoutBuilder::Build(GetCityLayoutParams());
 
 	SetActorScale3D(FVector::OneVector);
 
-	Ground->SetRelativeScale3D(FVector(TotalSize.X / 100.f, TotalSize.Y / 100.f, 1.0f));
-	Ground->SetRelativeLocation(FVector(0.f, 0.f, -50.f));
+	// El cubo gigante de antes solo sirve de base oscura; las calles se pintan con baldosas para que la textura se repita.
+	Ground->SetRelativeScale3D(FVector(Layout.TotalSize.X / 100.f, Layout.TotalSize.Y / 100.f, 1.0f));
+	Ground->SetRelativeLocation(FVector(0.f, 0.f, -52.f));
 
 	BlockSlabs->SetRelativeScale3D(FVector::OneVector);
 	ParkSlabs->SetRelativeScale3D(FVector::OneVector);
+	RoadTiles->SetRelativeScale3D(FVector::OneVector);
 	BlockSlabs->ClearInstances();
 	ParkSlabs->ClearInstances();
+	RoadTiles->ClearInstances();
 
-	for (int32 X = 0; X < BlocksX; ++X)
+	const float Tile = FMath::Max(GroundTileSize, 100.f);
+	AddTiledSlab(RoadTiles, FVector2D(0.f, 0.f), FVector2D(Layout.TotalSize.X, Layout.TotalSize.Y), -42.f, 50.f, Tile);
+
+	const bool bPCGSurfaces = bUsePCGStreets && CityGraph != nullptr;
+
+	for (const FCityBlock& Block : Layout.Blocks)
 	{
-		for (int32 Y = 0; Y < BlocksY; ++Y)
+		// Con PCG las aceras de las manzanas edificables las genera el grafo; los parques siguen siendo losas.
+		if (!Block.bPark && bPCGSurfaces)
 		{
-			const FVector2D C = GetBlockCenter(X, Y);
-			const FVector2D S = GetBlockSize(X, Y);
-
-			UInstancedStaticMeshComponent* Target = IsParkBlock(X, Y) ? ParkSlabs.Get() : BlockSlabs.Get();
-			Target->AddInstance(FTransform(
-				FRotator::ZeroRotator,
-				FVector(C.X, C.Y, SlabHeight * 0.5f),
-				FVector(S.X / 100.f, S.Y / 100.f, SlabHeight / 100.f)));
+			continue;
 		}
+
+		UInstancedStaticMeshComponent* Target = Block.bPark ? ParkSlabs.Get() : BlockSlabs.Get();
+		AddTiledSlab(Target, FVector2D(Block.Center.X, Block.Center.Y), FVector2D(Block.Size.X, Block.Size.Y), 0.f, SlabHeight, Tile);
 	}
 
 	ApplyColor(GroundMID, Ground.Get(), FLinearColor(0.02f, 0.02f, 0.02f));
-	ApplyColor(BlockMID, BlockSlabs.Get(), FLinearColor(0.25f, 0.25f, 0.25f));
-	ApplyColor(ParkMID, ParkSlabs.Get(), FLinearColor(0.05f, 0.35f, 0.07f));
+
+	if (RoadMaterial)
+	{
+		EnsureInstancedUsage(RoadMaterial);
+		RoadTiles->SetMaterial(0, RoadMaterial);
+	}
+	if (SidewalkMaterial)
+	{
+		EnsureInstancedUsage(SidewalkMaterial);
+		BlockSlabs->SetMaterial(0, SidewalkMaterial);
+	}
+	else
+	{
+		ApplyColor(BlockMID, BlockSlabs.Get(), FLinearColor(0.25f, 0.25f, 0.25f));
+	}
+	if (ParkMaterial)
+	{
+		EnsureInstancedUsage(ParkMaterial);
+		ParkSlabs->SetMaterial(0, ParkMaterial);
+	}
+	else
+	{
+		ApplyColor(ParkMID, ParkSlabs.Get(), FLinearColor(0.05f, 0.35f, 0.07f));
+	}
+
+	RebuildTrees();
+}
+
+void ACityScene::RebuildTrees()
+{
+	for (UInstancedStaticMeshComponent* Comp : TreeComponents)
+	{
+		if (Comp)
+		{
+			Comp->DestroyComponent();
+		}
+	}
+	TreeComponents.Reset();
+
+	TArray<UStaticMesh*> Meshes;
+	for (UStaticMesh* M : TreeMeshes)
+	{
+		if (M)
+		{
+			Meshes.Add(M);
+		}
+	}
+	if (Meshes.IsEmpty())
+	{
+		return;
+	}
+
+	for (UStaticMesh* M : Meshes)
+	{
+		UInstancedStaticMeshComponent* Comp = NewObject<UInstancedStaticMeshComponent>(this, NAME_None, RF_Transient);
+		Comp->SetStaticMesh(M);
+		Comp->SetupAttachment(Root);
+		Comp->RegisterComponent();
+		Comp->SetRelativeTransform(FTransform::Identity);
+		TreeComponents.Add(Comp);
+	}
+
+	const float Spacing = FMath::Max(TreeSpacing, 100.f);
+	for (const FCityBlock& Block : Layout.Blocks)
+	{
+		if (!Block.bPark)
+		{
+			continue;
+		}
+
+		FRandomStream Rng(static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(Block.X * 100 + Block.Y))));
+		const float Margin = FMath::Min(150.f, FMath::Min(Block.Size.X, Block.Size.Y) * 0.2f);
+		const float HalfX = Block.Size.X * 0.5f - Margin;
+		const float HalfY = Block.Size.Y * 0.5f - Margin;
+		if (HalfX <= 0.f || HalfY <= 0.f)
+		{
+			continue;
+		}
+
+		const int32 Count = FMath::Clamp(FMath::RoundToInt((Block.Size.X * Block.Size.Y) / (Spacing * Spacing)), 1, 40);
+		for (int32 I = 0; I < Count; ++I)
+		{
+			const int32 MeshIndex = Rng.RandRange(0, TreeComponents.Num() - 1);
+			const FVector Location(
+				Block.Center.X + Rng.FRandRange(-HalfX, HalfX),
+				Block.Center.Y + Rng.FRandRange(-HalfY, HalfY),
+				SlabHeight);
+			const UStaticMesh* TreeMesh = TreeComponents[MeshIndex]->GetStaticMesh();
+			const float MeshHeight = TreeMesh ? FMath::Max(TreeMesh->GetBounds().BoxExtent.Z * 2.f, 1.f) : 1000.f;
+			const float Scale = (FMath::Max(TreeHeight, 100.f) / MeshHeight) * Rng.FRandRange(0.8f, 1.2f);
+			TreeComponents[MeshIndex]->AddInstance(
+				FTransform(FRotator(0.f, Rng.FRandRange(0.f, 360.f), 0.f), Location, FVector(Scale)));
+		}
+	}
+}
+
+bool ACityScene::IsWorkLot(int32 LotIndex) const
+{
+	return WorkLots.Contains(LotIndex);
+}
+
+UStaticMesh* ACityScene::PickBuildingMesh(const FCityLot& Lot, int32 LotIndex, bool bWork) const
+{
+	FRandomStream Rng(static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(LotIndex))));
+
+	if (bWork)
+	{
+		return WorkMeshes[Rng.RandRange(0, WorkMeshes.Num() - 1)];
+	}
+
+	const float Range = FMath::Max(MaxBuildingHeight - MinBuildingHeight, 1.f);
+	const float Alpha = (Lot.Height - MinBuildingHeight) / Range;
+	const TArray<TObjectPtr<UStaticMesh>>& Pool =
+		(Alpha >= ApartmentHeightThreshold && !ApartmentMeshes.IsEmpty()) ? ApartmentMeshes : HouseMeshes;
+	const TArray<TObjectPtr<UStaticMesh>>& Fallback = ApartmentMeshes.IsEmpty() ? HouseMeshes : ApartmentMeshes;
+	const TArray<TObjectPtr<UStaticMesh>>& Use = Pool.IsEmpty() ? Fallback : Pool;
+	if (Use.IsEmpty())
+	{
+		return nullptr;
+	}
+	return Use[Rng.RandRange(0, Use.Num() - 1)];
+}
+
+void ACityScene::RebuildStreets()
+{
+	if (!PCG)
+	{
+		return;
+	}
+
+	if (!bUsePCGStreets || !CityGraph)
+	{
+		PCG->CleanupLocal(/*bRemoveComponents=*/true);
+		return;
+	}
+
+	// El nodo City Layout lee los parametros de este actor (ICityLayoutSource) al ejecutarse.
+	PCG->SetGraph(CityGraph);
+	PCG->GenerateLocal(/*bForce=*/true);
 }
 
 void ACityScene::OnConstruction(const FTransform& Transform)
@@ -300,20 +438,54 @@ void ACityScene::BuildLayout()
 
 	// Necesario aqui: desde el widget los parametros cambian sin pasar por OnConstruction.
 	RebuildGround();
+	RebuildStreets();
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	Params.ObjectFlags |= RF_Transient; // no se guardan con el nivel
 
-	for (int32 X = 0; X < BlocksX; ++X)
+	const FTransform SceneTransform(GetActorRotation(), GetActorLocation(), FVector::OneVector);
+
+	// Mismas parcelas que recibe el grafo PCG por el pin Lots: calles, aceras y edificios no pueden desalinearse.
+	// Los rascacielos (trabajo) son las parcelas mas altas; el resto son casas y apartamentos de los ciudadanos.
+	WorkLots.Reset();
+	if (!WorkMeshes.IsEmpty() && Layout.Lots.Num() > 1)
 	{
-		for (int32 Y = 0; Y < BlocksY; ++Y)
+		TArray<int32> Order;
+		for (int32 I = 0; I < Layout.Lots.Num(); ++I) { Order.Add(I); }
+		Order.Sort([this](int32 A, int32 B) { return Layout.Lots[A].Height > Layout.Lots[B].Height; });
+		const int32 NumWork = FMath::Clamp(FMath::RoundToInt(Layout.Lots.Num() * WorkRatio), 1, Layout.Lots.Num() - 1);
+		for (int32 I = 0; I < NumWork; ++I) { WorkLots.Add(Order[I]); }
+	}
+
+	int32 LotIndex = 0;
+	for (const FCityLot& Lot : Layout.Lots)
+	{
+		const FTransform LocalTransform(FRotator(0.f, Lot.Yaw, 0.f), Lot.Location, FVector::OneVector);
+
+		ACityBuilding* Building = World->SpawnActor<ACityBuilding>(BuildingClass, LocalTransform * SceneTransform, Params);
+		if (!Building)
 		{
-			if (!IsParkBlock(X, Y))
-			{
-				SpawnBuildingsInBlock(X, Y, Params);
-			}
+			continue;
 		}
+
+		const FVector LotSize(Lot.Depth, Lot.Width, Lot.Height);
+		const bool bWork = IsWorkLot(LotIndex);
+		// Casas con color propio (pastel segun la parcela); los edificios de trabajo conservan su textura original.
+		static const FLinearColor HomeColors[] = {
+			FLinearColor(0.95f, 0.78f, 0.55f), FLinearColor(0.85f, 0.45f, 0.38f), FLinearColor(0.60f, 0.78f, 0.90f),
+			FLinearColor(0.70f, 0.88f, 0.62f), FLinearColor(0.95f, 0.90f, 0.55f), FLinearColor(0.88f, 0.68f, 0.82f),
+			FLinearColor(0.98f, 0.70f, 0.60f), FLinearColor(0.55f, 0.75f, 0.72f) };
+		FRandomStream ColorRng(static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(LotIndex * 31 + 5))));
+		const FLinearColor Tint = bWork ? FLinearColor::White : HomeColors[ColorRng.RandRange(0, UE_ARRAY_COUNT(HomeColors) - 1)];
+		Building->SetBuildingMesh(PickBuildingMesh(Lot, LotIndex, bWork), LotSize, BuildingMeshYawOffset, Tint, 1.0f);
+		Building->SetBuildingType(bWork ? EBuildingType::Work : EBuildingType::Home);
+		++LotIndex;
+		Building->Tags.Add(GetOwnTag());
+#if WITH_EDITOR
+		Building->SetFolderPath(TEXT("City"));
+#endif
+		SpawnedBuildings.Add(Building);
 	}
 }
 
@@ -332,8 +504,6 @@ void ACityScene::GenerateLayoutInternal(bool bNewSeed)
 	}
 	BuildLayout();
 
-	UE_LOG(LogTemp, Log, TEXT("CityScene: layout generado, %d edificios. Seed=%d Bloques=%dx%d Calle=%.0f Lote=%.0f Manzana=%.0f-%.0f"),
-		SpawnedBuildings.Num(), Seed, BlocksX, BlocksY, StreetWidth, TargetLotSize, MinBlockSize, MaxBlockSize);
 }
 
 void ACityScene::GenerateLayout()
@@ -355,10 +525,10 @@ void ACityScene::ApplyParamsAndRegenerate(
 {
 	BlocksX = InBlocksX;
 	BlocksY = InBlocksY;
-	StreetWidth = InStreetWidth;
-	MinBlockSize = InMinBlockSize;
-	MaxBlockSize = InMaxBlockSize;
-	TargetLotSize = InLotSize;
+	StreetWidth = InStreetWidth * WidgetUnitScale;
+	MinBlockSize = InMinBlockSize * WidgetUnitScale;
+	MaxBlockSize = InMaxBlockSize * WidgetUnitScale;
+	TargetLotSize = InLotSize * WidgetUnitScale;
 	BlockSizeNoiseScale = InBlockNoise;
 	ParkNoiseScale = InParkNoise;
 	ParkThreshold = InParkThreshold;
@@ -392,32 +562,23 @@ void ACityScene::StartScene()
 	const int32 NumBuildings = SpawnedBuildings.Num();
 	if (NumBuildings < 2)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("CityScene: hacen falta al menos 2 edificios (casa y trabajo)."));
 		return;
 	}
 
-	for (int32 I = NumBuildings - 1; I > 0; --I)
-	{
-		SpawnedBuildings.Swap(I, Rng.RandRange(0, I));
-	}
-
-	const int32 WorkCount = FMath::Clamp(FMath::RoundToInt(NumBuildings * WorkRatio), 1, NumBuildings - 1);
-
+	// El tipo (casa/trabajo) ya lo fijo BuildLayout segun la malla: oficinas = trabajo, casas y pisos = casa.
 	TArray<ACityBuilding*> Homes;
 	TArray<ACityBuilding*> Works;
-	for (int32 I = 0; I < NumBuildings; ++I)
+	for (ACityBuilding* Building : SpawnedBuildings)
 	{
-		ACityBuilding* Building = SpawnedBuildings[I];
-		if (I < WorkCount)
-		{
-			Building->SetBuildingType(EBuildingType::Work);
-			Works.Add(Building);
-		}
-		else
-		{
-			Building->SetBuildingType(EBuildingType::Home);
-			Homes.Add(Building);
-		}
+		(Building->GetBuildingType() == EBuildingType::Work ? Works : Homes).Add(Building);
+	}
+	if (Homes.IsEmpty() || Works.IsEmpty())
+	{
+		return;
+	}
+	for (int32 I = Homes.Num() - 1; I > 0; --I)
+	{
+		Homes.Swap(I, Rng.RandRange(0, I));
 	}
 
 	Clock = World->SpawnActor<ACityClock>(ACityClock::StaticClass(), GetActorLocation(), FRotator::ZeroRotator, Params);
@@ -444,87 +605,4 @@ void ACityScene::StartScene()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("CityScene: %d edificios (%d casas, %d trabajos), %d ciudadanos. Seed=%d"),
-		NumBuildings, Homes.Num(), Works.Num(), SpawnedPeople.Num(), Seed);
-}
-
-// ---------------------------------------------------------------------------
-// Edificios
-// ---------------------------------------------------------------------------
-
-void ACityScene::SpawnBuildingsInBlock(int32 BlockX, int32 BlockY, const FActorSpawnParameters& Params)
-{
-	UWorld* World = GetWorld();
-	const FTransform SceneTransform(GetActorRotation(), GetActorLocation(), FVector::OneVector);
-
-	const FVector2D Center = GetBlockCenter(BlockX, BlockY);
-	const FVector2D Size = GetBlockSize(BlockX, BlockY);
-
-	const int32 LotsX = FMath::Clamp(FMath::RoundToInt(Size.X / TargetLotSize), 1, MaxLotsPerAxis);
-	const int32 LotsY = FMath::Clamp(FMath::RoundToInt(Size.Y / TargetLotSize), 1, MaxLotsPerAxis);
-	const float LotW = Size.X / LotsX;
-	const float LotD = Size.Y / LotsY;
-
-	const uint32 BlockHash = HashCombine(GetTypeHash(Seed), GetTypeHash(BlockX * 100 + BlockY));
-
-	for (int32 I = 0; I < LotsX; ++I)
-	{
-		for (int32 J = 0; J < LotsY; ++J)
-		{
-			const float OffsetX = (I + 0.5f) * LotW - Size.X * 0.5f;
-			const float OffsetY = (J + 0.5f) * LotD - Size.Y * 0.5f;
-
-			float Yaw;
-			bool bFaceX;
-			if (FMath::Abs(OffsetX) / Size.X >= FMath::Abs(OffsetY) / Size.Y)
-			{
-				Yaw = (OffsetX >= 0.f) ? 0.f : 180.f;
-				bFaceX = true;
-			}
-			else
-			{
-				Yaw = (OffsetY >= 0.f) ? 90.f : -90.f;
-				bFaceX = false;
-			}
-
-			const FTransform LocalTransform(
-				FRotator(0.f, Yaw, 0.f),
-				FVector(Center.X + OffsetX, Center.Y + OffsetY, SlabHeight),
-				FVector::OneVector);
-			const FTransform WorldTransform = LocalTransform * SceneTransform;
-
-			ACityBuilding* Building = World->SpawnActor<ACityBuilding>(BuildingClass, WorldTransform, Params);
-			if (!Building)
-			{
-				continue;
-			}
-
-			// Aleatoriedad propia de cada parcela: cambiar un parametro no re-randomiza el resto de edificios.
-			FRandomStream LotRng(static_cast<int32>(HashCombine(BlockHash, GetTypeHash(I * 10 + J))));
-
-			const float DepthLot = bFaceX ? LotW : LotD;
-			const float WidthLot = bFaceX ? LotD : LotW;
-			const float Depth = DepthLot * LotRng.FRandRange(MinFootprint, MaxFootprint);
-			const float Width = WidthLot * LotRng.FRandRange(MinFootprint, MaxFootprint);
-
-			float HeightAlpha;
-			if (bUsePerlinNoise)
-			{
-				HeightAlpha = NoiseNorm((Center.X + OffsetX) / HeightNoiseCell,
-					(Center.Y + OffsetY) / HeightNoiseCell, HeightNoiseScale);
-			}
-			else
-			{
-				HeightAlpha = LotRng.FRand();
-			}
-			const float Height = FMath::Lerp(MinBuildingHeight, MaxBuildingHeight, HeightAlpha);
-
-			Building->SetSize(FVector(Depth, Width, Height));
-			Building->Tags.Add(GetOwnTag());
-#if WITH_EDITOR
-			Building->SetFolderPath(TEXT("City"));
-#endif
-			SpawnedBuildings.Add(Building);
-		}
-	}
 }
